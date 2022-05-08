@@ -1,0 +1,258 @@
+---
+title: "Homework 1"
+output: html_notebook
+---
+
+CSC532
+
+### Problem 1: Vegas Hotels
+
+
+```{R}
+vegashotels.data = read.csv2("vegashotels-1.csv", stringsAsFactors = TRUE)
+attach(vegashotels.data)
+str(vegashotels.data)
+```
+Explore the overall structure of the dataset using str(). Also used the attach() function to make writing the variable names easier.
+
+```{R}
+any(is.na(vegashotels.data))
+```
+None of the variables have missing values. I used the any() function and is.na() function to determine this. The any() tells us if at least one of the values is true. is.na() returns TRUE or FALSE for each data point if it contains an NA. It also tells us the number of NA's by doing the summary() function.
+
+```{R}
+hist(Score, main="Histogram of Vegas Hotel's Scores", xlab="Scores")
+```
+From the histogram of the hotel's scores we can see that it seems like the majority of hotels recieve a 5 and very little recieve a 1 or 2. 
+
+```{R}
+temp = table(as.vector(Score))
+names(temp)[temp ==max(temp)]
+```
+The mode of Scores is `r names(temp)[temp==max(temp)]`
+
+```{R}
+quantile(Score)
+```
+By using the quantile() function we can see that the median of Scores is 4.
+
+```{R}
+a = Score %in% c(4,5)
+b = ifelse(a, "positive", "negative")
+sentiment = factor(b)
+summary(sentiment)
+summary(a)
+```
+Created a factor variable sentiment that returns "positive" if the Score of the hotel is 4 or 5 and returns "negative" otherwise. Variable "a" holds the scores that are either 4 or 5. I used an ifelse statement to return positive if  "a" is true and returns "negative" otherwise. By using the summary() function we can see that the number of TRUE and FALSE's in "a" correspond respectfully to the number of "positive" and "negative".
+
+```{R}
+CrossTable(x=sentiment, y=Pool, chisq = TRUE)
+```
+Here we can see using the chi-squared test that the probability is very low. Therefore, it is likely that the variations in cell count between sentiment and Pool are due to association and not by chance. (Lower than alpha=0.01)
+
+```{R}
+CrossTable(x=sentiment, y=Gym, chisq = TRUE)
+```
+The association between sentiment and Gym is most likely due to chance because the probability is very high.(Greater than the alpha=0.01)
+
+```{R}
+CrossTable(x=sentiment, y=Free.internet, chisq = TRUE)
+```
+The probability is very low here and therefore there is most likely an association between sentiment and free internet.(Lower than alpha)
+
+```{R}
+staytable = table(Period.of.stay, sentiment)
+mosaicplot(staytable, ylab="sentiment", xlab="period of stay", main="Mosiac graph of sentiment vs period of stay", shade=TRUE)
+chisq.test(staytable)
+```
+The mosaiac model shows that there are much more positive observations in the data compared to negative. However, during the months of Mar-May and Sep-Nov the amount of negative sentiments slightly increases, but overall there is not much variation. All of the cells are white which indicate that there was not a significant difference between observed and expected cell frequencies. Therefore, it is likely that the period of stay and sentiment are not associated.I used the chi-squared test to verify my findings, and the p-value was much higher than the alpha. 
+
+```{R}
+travelertable=table(Traveler.type, sentiment)
+mosaicplot(travelertable, ylab="sentiment", xlab="traveler type", main="Mosaic graph of sentiment vs traveler type", shade=TRUE)
+chisq.test(travelertable)
+```
+Again all of the cells are white indicating that there is not a significant difference between the observed and expected cell frequencies.We can see that couples and families are the most frequent data type. We can also see that business travelers, families, and solo travelers expressed slightly more negative sentiments compared to the rest. However, this is most likely due to chance based on the residuals. I also verified these findings with the chi-squared test.
+
+```{R}
+starstable=table(Hotel.stars, sentiment)
+mosaicplot(starstable, ylab="sentiment", xlab="Hotel Stars", main="Mosaic graph of sentiment vs Hotel Stars", shade=TRUE)
+chisq.test(starstable)
+```
+From this graph we can see that 3.5 and 5 stars cell frequency was lower than the expected cell frequency; the cell with 3 stars is blue indicating that it was higher than the expected frequency. 4 and 4.5 are white which means they were at the expected cell frequency. These colorful cells contribute to the significance of the chi-squared test. We can see that the p-value is extremely low, indicating that there is a significance between hotel stars and sentiment. 
+
+### Problem 2: California Housing
+
+```{R}
+housing.data = read.csv("housing-1.csv", stringsAsFactors = TRUE)
+attach(housing.data)
+str(housing.data)
+```
+Imported the California housing data set and used str() to display the structure of the object. We can see that there are 10 attributes and only 1 of them is a factor/categorical attribute (ocean_proximity).
+
+```{R}
+summary(housing.data)
+any(is.na(housing.data))
+```
+Printing the summary statistics of the dataset and checking if there are any null values which is true.
+
+```{R}
+k = sum(!complete.cases(housing.data))
+l = nrow(housing.data)
+k/l
+```
+I used the function complete.cases to get the number of rows in the dataset that contain NA. The summary() function also tells us the number of NAs in the data frame. Then I used nrow() to get the total number of rows in the dataset. I divided them to find that about 10% of the rows in the data frame contain NAs.
+
+```{R}
+sum(!complete.cases(na.omit(housing.data)))
+housing.data = na.omit(housing.data)
+```
+I used na.omit to omit all missing values in the data frame. I verified my work by getting the sum of missing values after omission which returned 0 as expected.
+
+```{R}
+hist(median_house_value)
+boxplot(median_house_value)
+```
+Drew a histogram and boxplot of median house value. It seems like the shape is right/positively skewed, meaning the mode is smaller than the median.
+
+```{R}
+qqnorm(median_house_value)
+```
+Drew a Q-Q plot. It seems like the distribution is more exponential than normal. 
+
+```{R}
+IQR = IQR(median_house_value)
+summary(median_house_value)
+left = 119600-1.5*IQR
+right = 264725+1.5*IQR
+length(median_house_value[median_house_value<left | median_house_value>right])
+```
+Using the IQR method for outliers we can identify that there are 1071 outliers in the data frame.
+
+```{R}
+numeric_attributes = housing.data[,c("longitude", "latitude", "housing_median_age", "total_rooms", "total_bedrooms", "population", "households", "median_income", "median_house_value")]
+pairs(numeric_attributes)
+cor(numeric_attributes)
+cor.test(median_income, median_house_value)
+```
+Based off of our correlation matrix and scatterplots we can see that there seems to be a positive correlation between median house value and median income. I verified my findindings by doing the cor.test() function to get the p value which we can see is very small, much less than 0.05 and therefore not due to chance.
+
+```{R}
+plot(median_house_value~ocean_proximity, col="cadetblue1")
+oneway.test(median_house_value~ocean_proximity)
+```
+From the side by side boxplots we can tell that 1H Ocean, Near Bay, and Near Ocean, all have very similar looking plots and medians. But Inland and Island look very different from the others. The median house value for an island home is generally very high compared to the median house value of an inland home. I did a one-way ANOVA test to compare the means of median house value across the different types of homes and the p-value is very small (much less than 0.01) and therefore is significant. 
+
+```{R}
+Is_Inland = ifelse(ocean_proximity=="INLAND", "Yes", "No")
+```
+Using the ifelse function to create a new factor "Is_Inland" that prints yes if the ocean_proximity is inland and no otherwise.
+
+```{R}
+boxplot(median_house_value~Is_Inland, col="darkolivegreen2")
+oneway.test(median_house_value~Is_Inland)
+```
+From the boxplot we can see that plots for Yes and No look very different. We can verify this by using a one-way ANOVA test to see the p-value of the means. The p-value is very small, less than our alpha, and therefore is statistically significant. 
+
+### Problem 3 Heart Disease Dataset
+
+```{R}
+cleveland.data = read.table("processed.cleveland.data", sep=",", na.strings = "?")
+hungarian.data = read.table("processed.hungarian.data",sep=",", na.strings = "?")
+switzerland.data = read.table("processed.switzerland.data",sep=",", na.strings = "?")
+va.data = read.table("processed.va.data",sep=",", na.strings = "?")
+```
+Opened the heart disease dataset with "," as the delimiter and "?" indicating NA values.
+```{R}
+heartdisease.data = rbind(cleveland.data, hungarian.data, switzerland.data, va.data)
+colnames(heartdisease.data) = c("age", "sex", "cp", "trestbps", "chol", "fbs", "restecg", "thalach", "exang", "oldpeak", "slope", "ca", "thal", "num")
+head(heartdisease.data)
+```
+Combined the four data frames into one data frame and manually set the 14 column names. 
+```{R}
+str(heartdisease.data)
+summary(heartdisease.data)
+sum(!complete.cases(heartdisease.data))/nrow(heartdisease.data)
+```
+Getting the total number of NAs in the dataset and dividing it with the total number of cells. We can see that about 67% of the data has missing values. From the summary table we see that the "ca" attribute has 611 missing values and "thal" has 486 missing values.
+
+```{R}
+heartdisease.data$sex = factor(heartdisease.data$sex, labels = c("Female", "Male"))
+heartdisease.data$cp = factor(heartdisease.data$cp, labels = c("Typical Angina", "Atypical Angina", "Non-Anginal Pain", "Asymptomatic"))
+heartdisease.data$restecg = factor(heartdisease.data$restecg, labels = c("normal", "ST-T Wave Abnormality", "Left Ventricular Hypertrophy"))
+heartdisease.data$thal = factor(heartdisease.data$thal, labels = c("normal", "fixed defect", "reversable defect"))
+heartdisease.data$fbs = factor(heartdisease.data$fbs, labels=c("false", "true"))
+heartdisease.data$slope = factor(heartdisease.data$slope, labels = c("unsloping", "flat", "downsloping"))
+heartdisease.data$exang = factor(heartdisease.data$exang, labels = c("no", "yes"))
+str(heartdisease.data)
+```
+From the data description I found that sex, cp, fbs, restecg, exang, slope, and thal should be factors. I used the factor method and assigned meaningful labels to each label. Reprinted the structure of the data frame to verify what I did. I skipped the num factor for this question because it is addressed later in question 7. 
+
+```{R}
+median(heartdisease.data$age)
+temp = table(as.vector(heartdisease.data$age))
+names(temp)[temp == max(temp)]
+```
+Both the median and mode of the age attribute is 54.
+
+```{R}
+male = nrow(heartdisease.data[heartdisease.data$sex == "Male",])
+male/920
+```
+We know that the total number of patients in the data frame is 920. I calculated the number of males there were in the data frame by using the nrow function and divided it with the total to find that about 78% of the data is male. I believe this shows that females are underrepresented in the data.
+
+```{R}
+d = factor(ifelse(heartdisease.data$num == 0, "no", "yes"))
+heartdisease.data$num = d
+names(heartdisease.data)[names(heartdisease.data) == "num"] = "diagnosis"
+str(heartdisease.data)
+```
+Used ifelse and factor functions to create a new variable "diagnosis" that replaces the num column. If the column had 0 we put "No" and put "Yes" for all other values.
+
+```{R}
+attach(heartdisease.data)
+
+```
+
+```{R}
+boxplot(age~diagnosis, col="plum2")
+boxplot(trestbps~diagnosis, col="rosybrown1")
+boxplot(chol~diagnosis, col="seashell3")
+boxplot(thalach~diagnosis, col="lavender")
+boxplot(oldpeak~diagnosis, col="lightcoral")
+boxplot(ca~diagnosis, col="honeydew1")
+
+```
+```{R}
+t.test(age~diagnosis)
+t.test(trestbps~diagnosis)
+t.test(chol~diagnosis)
+t.test(thalach~diagnosis)
+t.test(oldpeak~diagnosis)
+t.test(ca~diagnosis)
+```
+
+To analyze the relationship of diagnosis compared to the other 13 attributes in the dataset I first start with analyzing diagnosis with the numeric attributes. I drew boxplots and did t-tests for age, trestbps, chol, thalach, oldpeak, and ca. All of the t-test's p-values were lower than 0.05 indicating that we can conclude that there is a statistically significant difference between the means of the numeric variable for those who were diagnosed and not diagnosed.Noteably, "ca" for the number of major vessels boxplot looked much different from the rest. It seems that those who were diagnosed had basically no major vessels with just 3 outliers. Those who were diagnosed generally had at least one. Another noteable plot is the chol vs diagnosis plot. It seems like those who were diagnosed had more lower levels of serum cholestoral. For the plot of trestbps vs diagnosis, it seems like there was almost no difference. The two boxes look very similar, I would say that this would not be a very good sole indicator of diagnosing heart disease. The p-value for their t-test was also the highest of all the numeric attributes but was still low enough to be significant. It seems like the people who were tested for heart diease were mostly in their 40-60's. With older people generally getting more diagnosed.
+
+```{R}
+mosaicplot(table(diagnosis, sex), shade = TRUE)
+mosaicplot(table(diagnosis, cp), shade = TRUE)
+mosaicplot(table(diagnosis, fbs), shade = TRUE)
+mosaicplot(table(diagnosis, restecg), shade = TRUE)
+mosaicplot(table(diagnosis, exang), shade = TRUE)
+mosaicplot(table(diagnosis, slope), shade = TRUE)
+mosaicplot(table(diagnosis, thal), shade = TRUE)
+```
+
+```{R}
+chisq.test(table(diagnosis, sex))
+chisq.test(table(diagnosis, cp))
+chisq.test(table(diagnosis, fbs))
+chisq.test(table(diagnosis, restecg))
+chisq.test(table(diagnosis, exang))
+chisq.test(table(diagnosis, slope))
+chisq.test(table(diagnosis, thal))
+
+```
+
+Next I compared all of the categorical attributes with diagnosis. Based on our chi-square tests we can determine that all of the attributes are statistically significant. The p-value for restecg was larger indicating that maybe it is the weakest association and the mosaic plot for it was mostly white indicating that measurements were as expected. The next table with the most white cells is the fbs table. It seems like measurements were as expected for people with lower fasting blood sugar. But for people with higher fasting blood sugar, they were diagnosed lower than expected as indicated by the blue. I am seeing a lot of larger blue cells overall in the plots indicating that measurements were generally higher than expected for those cells. I also noticed that it seems that Male's get diagnoses more than females, which is blue, meaning that they were diagnosed a little higher than expected. However the female side indicates that females were diagosed a lot less often than expected. The table for exang, exercise induced angina, indicated that people who did have exercise induced angina, were diagnosed with heart disease a lot less than expected; and vise versa. It seems that from these plots we can depend on restecg and fbs to be a standard indicator of heart disease diagnosis because they often turn out as expected.

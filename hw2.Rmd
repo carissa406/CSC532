@@ -1,0 +1,426 @@
+---
+title: "Homework 2"
+output: html_notebook
+---
+
+CSC 532
+
+### Problem 1: Applying k-Nearest Neighbors to predict income
+
+```{r}
+#downloading the data and manually adding headers
+adult.data = read.csv("adult.data", strip.white = TRUE, stringsAsFactors = TRUE)
+colnames(adult.data) = c( "age", "workclass", "fnlwgt", "education", "educationnum", "maritalstatus", "occupation", "relationship", "race", "sex", "capitalgain", "capitalloss", "hoursperweek", "nativecountry", "income")
+
+```
+```{r}
+head(adult.data)
+```
+
+```{r}
+#exploring the structure of the dataset. and summary statistics of each variable
+str(adult.data)
+summary(adult.data)
+```
+
+There are 15 variables total, 9 categorical and 6 numerical. There seems to be some missing values denoted by "?".
+
+```{r}
+#get frequency table of income
+table(adult.data$income)
+```
+
+The data is not very balanced. There are way more observations of people that make under or equal to 50k a year versus over 50k a year.
+
+```{r}
+#using side by side box plots to explore income vs numerical features
+plot(adult.data$hoursperweek~adult.data$income)
+plot(adult.data$age~adult.data$income)
+plot(adult.data$fnlwgt~adult.data$income)
+plot(adult.data$educationnum~adult.data$income)
+plot(adult.data$capitalgain~adult.data$income)
+plot(adult.data$capitalloss~adult.data$income)
+```
+
+```{r}
+#using t-test to explore relationship between income and numerical variables.
+t.test(adult.data$hoursperweek~adult.data$income,alternative="two.sided")
+t.test(adult.data$age~adult.data$income,alternative="two.sided")
+t.test(adult.data$fnlwgt~adult.data$income,alternative="two.sided")
+t.test(adult.data$educationnum~adult.data$income,alternative="two.sided")
+t.test(adult.data$capitalgain~adult.data$income,alternative="two.sided")
+t.test(adult.data$capitalloss~adult.data$income,alternative="two.sided")
+```
+
+There seems to be a significance between income and hoursperweek, age, educationnum, capitalgain, and capital loss given that the p-values of the comparisons are less than 0.05. The only one that we cannot conclude there is a difference between is fnlwgt. We can also see that the side by side box plots look almost identical as well.
+
+```{r message=FALSE, warning=FALSE}
+#using crosstables and mosaic plots to explore the relationship between income and other categorical variables
+library(gmodels)
+attach(adult.data)
+CrossTable(x = workclass, y = income, chisq = TRUE)
+CrossTable(x = education, y = income, chisq = TRUE)
+CrossTable(x = maritalstatus, y = income, chisq = TRUE)
+CrossTable(x = occupation, y = income, chisq = TRUE)
+CrossTable(x = relationship, y = income, chisq = TRUE)
+CrossTable(x = race, y = income, chisq = TRUE)
+CrossTable(x = sex, y = income, chisq = TRUE)
+CrossTable(x = nativecountry, y = income, chisq = TRUE)
+
+```
+
+According to our chi-squared tests, the most significant factors for determining income are workclass, race, and native country because their p-values are less that 0.05. All others had p-value = 0. I will create mosaic plots for these. From the mosaic plots below, we can see that there are many red and blue colored cells, indicating that they are contributing to the significance of the chisquare test. We can determine that all of these are significant to determining income.
+
+```{r}
+mosaicplot(table(x = education, y = income), shade = TRUE)
+mosaicplot(table(x = maritalstatus, y = income), shade = TRUE)
+mosaicplot(table(x = occupation, y = income), shade = TRUE)
+mosaicplot(table(x = relationship, y = income), shade = TRUE)
+mosaicplot(table(x = sex, y = income), shade = TRUE)
+
+```
+
+#### Data Preparation
+
+```{r}
+#Change all "?" into NA
+adult.data = read.csv("adult.data", strip.white = TRUE, na="?", stringsAsFactors = TRUE)
+colnames(adult.data) = c( "age", "workclass", "fnlwgt", "education", "educationnum", "maritalstatus", "occupation", "relationship", "race", "sex", "capitalgain", "capitalloss", "hoursperweek", "nativecountry", "income")
+head(adult.data)
+```
+
+```{r}
+#get number of missing values in each column
+colSums(is.na(adult.data))
+```
+
+According to this function, workclass, occupation, and native country have missing values. These are all categorical columns so I replace all NAs with their corresponding modes.
+
+```{r}
+#find mode of each column with a missing value
+wc = table(as.vector(workclass))
+names(wc)[wc==max(wc)]
+
+oc = table(as.vector(occupation))
+names(oc)[oc==max(oc)]
+
+nc = table(as.vector(nativecountry))
+names(nc)[nc==max(nc)]
+```
+
+```{r}
+#replace all NAs with their mode
+adult.data$workclass[is.na(adult.data$workclass)] = "Private"
+adult.data$occupation[is.na(adult.data$occupation)] = "Prof-specialty"
+adult.data$nativecountry[is.na(adult.data$nativecountry)] = "United-States"
+colSums(is.na(adult.data))
+```
+
+Set seed = 1
+
+```{r}
+#set seed of random number generator
+set.seed(1)
+```
+
+Shuffling the data randomly.
+
+```{r}
+#randomize the order of the rows in the dataset
+adult.data = adult.data[sample(nrow(adult.data),replace=FALSE),]
+head(adult.data)
+```
+
+```{r}
+#one-hot encoding of all undordered categorical variables except the income variable.
+library(data.table)
+library(mltools)
+adult.data = as.data.table(adult.data)
+head(adult.data)
+```
+
+```{R}
+adult.data = one_hot(adult.data, cols = c("workclass", "education", "maritalstatus", "occupation", "relationship", "race", "sex", "nativecountry"), dropUnusedLevels = TRUE)
+
+adult.data = as.data.frame(adult.data)
+head(adult.data)
+
+```
+
+#### Training and Evaluation of ML Models
+
+```{r}
+#scale numeric features using min max scaling
+normalize <- function(x) {
+return ((x - min(x)) / (max(x) - min(x)))
+}
+
+adult_n = as.data.frame(lapply(adult.data[1:105], normalize))
+#1-105 because row 106 is the income variable
+```
+
+```{r}
+head(adult_n)
+```
+
+```{r message=FALSE, warning=FALSE}
+#use 5-fold cross validation with knn
+library(caret)
+library(class)
+folds = createFolds(adult.data$income, k=5)
+```
+
+```{r}
+knn_fold=function(features,target,fold,k){
+train=features[-fold,]
+validation=features[fold,]
+train_labels=target[-fold]
+validation_labels=target[fold]
+validation_preds=knn(train,validation,train_labels,k=k)
+t= table(validation_labels,validation_preds)
+error=(t[1,2]+t[2,1])/(t[1,1]+t[1,2]+t[2,1]+t[2,2])
+return(error)
+}
+
+crossValidationError=function(features,target,k){
+folds=createFolds(target,k=5)
+errors=sapply(folds,knn_fold,features=features, target=target,k=k)
+
+return(mean(errors))
+}
+```
+
+```{r}
+crossValidationError(adult_n, adult.data$income, 21)
+```
+
+```{r}
+#Tune K
+ks = seq(1, 180, by = 5)
+errors=sapply(ks, crossValidationError, features=adult_n, target=adult.data$income)
+```
+
+```{r}
+errors
+```
+
+```{r}
+plot(errors~ks, main="Cross validation error VsK", xlab='k', ylab="CVError")
+lines(errors~ks)
+```
+
+It appears that k=13 gives us the best cross validation error.
+
+```{r}
+#use 5-fold cross validation with knn to predict the income variable and report the average false positive rate and false negative rate of the classifier.
+```
+
+```{r}
+library(caret)
+knn_fold=function(features,target,fold,k){
+train=features[-fold,]
+validation=features[fold,]
+train_labels=target[-fold]
+validation_labels=target[fold]
+validation_preds=knn(train,validation,train_labels,k=k)
+t= table(validation_labels,validation_preds)
+FPR=t[1,2]/(t[1,2]+t[1,1])                        #replaced returning the validation error for FPR and FNR
+FNR=t[2,1]/(t[2,1]+t[2,2])
+return (c("FPR"=FPR,"FNR"=FNR))
+}
+
+crossValidationError=function(features,target,k){
+folds=createFolds(target,k=5)
+errors=sapply(folds,knn_fold,features=features, target=target,k=k)
+
+return(rowMeans(errors))                          #replaced mean with rowMeans
+}
+```
+
+```{r}
+errors = crossValidationError(features=adult_n, target=adult.data$income, k=13)
+```
+
+```{r}
+errors
+```
+
+```{r}
+#Consider a majority classifier which always predicts income <50K. Without writing any code, explain what would be the training error of this classifier? ( Note the training error of this majority classifier is simply the proportion of all examples with income>50K because they are all misclassified by this majority classifier).Compare this with the cross validation error of KNN you computed in question 8. Does KNN do better than this majority classifier?
+
+summary(adult.data$income)
+length(adult.data$income)
+```
+
+If there was a majority classifier that always predicts the income to be \<50k, the training error of the classifier would be the proportion of all examples that are \>50k. So it would be 7841/32560 which is about 0.240 The cross validation error we got before was about 0.165. Therefore, our KNN does better than this majority classifier.
+
+```{r}
+# Explain what is the False Positive Rate and False Negative Rate of the majority classifier and how does it compare to the average FPR and FNR of KNN classifier you computed in question 10. You don’t need to write any code to compute FPR and FNR of the majority classifier. You can just compute it based on the definition of FNR and FPR.
+```
+
+The false positive rate is the number of times that we incorrectly predict the income to be \<50k.The classifier will incorrectly predict 7841/32560 Which is again about 0.240; the false negative rate is the number of times that we incorrectly predict the income to be \>50k. Since this imaginary classifier ALWAYS predicts the income to be \<50k and will NEVER predict it to be \>50k, the false negative rate is 0. We want the false positive rate to be as low as possible, and the FPR we get from our KNN classifier is lower than the imaginary one.
+
+------------------------------------------------------------------------
+
+### Problem 2: Applying Naive Bayes classifier to sentiment classification of COVID tweets
+
+```{r}
+#read the data and store in df. Look at structure of data.
+
+covid_nlp = read.csv("Corona_NLP_train.csv", stringsAsFactors = FALSE)
+str(covid_nlp)
+```
+
+```{r}
+#randomize the order of the rows
+
+covid_nlp = covid_nlp[sample(nrow(covid_nlp), replace = FALSE),]
+```
+
+```{r}
+#convert sentiment into a factor with three levels: positive, neutral, negative. Take summary of sentiment.
+
+covid_nlp$Sentiment = factor(covid_nlp$Sentiment, levels = c("Neutral", "Positive", "Extremely Positive", "Negative", "Extremely Negative"), labels = c("Neutral", "Positive", "Positive", "Negative", "Negative"))
+summary(covid_nlp$Sentiment)
+```
+
+```{r}
+# Create a text corpus from OriginalTweet variable. Then clean the corpus, that is convert all tweets to lowercase, stem and remove stop words, punctuation, and additional white spaces. 
+library(SnowballC)
+library(tm)
+```
+
+```{r}
+covid_corpus = VCorpus(VectorSource(covid_nlp$OriginalTweet))
+```
+
+```{r}
+print(covid_corpus)
+```
+```{r}
+inspect(covid_corpus[1])
+```
+
+```{r}
+as.character(covid_corpus[[1]])
+```
+
+```{r}
+covid_corpus_clean = tm_map(covid_corpus, content_transformer(tolower))
+```
+
+```{r}
+as.character(covid_corpus_clean[[1]])
+```
+```{r}
+covid_corpus_clean = tm_map(covid_corpus_clean, removeNumbers)
+```
+
+```{r}
+covid_corpus_clean = tm_map(covid_corpus_clean, removeWords, stopwords())
+```
+
+```{r}
+as.character(covid_corpus_clean[[1]])
+```
+```{r}
+replacePunctuation = function(x){
+  gsub("[[:punct:]]+", " ", x)
+}
+
+covid_corpus_clean = tm_map(covid_corpus_clean, content_transformer(replacePunctuation))
+as.character(covid_corpus_clean[[1]])
+```
+
+```{r}
+covid_corpus_clean = tm_map(covid_corpus_clean, stemDocument)
+covid_corpus_clean = tm_map(covid_corpus_clean, stripWhitespace)
+as.character(covid_corpus_clean[[1]])
+```
+```{r}
+sapply(covid_corpus_clean[18], as.character)
+```
+```{r}
+#Create separate wordclouds for “positive” and “negative” tweets (set max.words=100 to only show  the 100 most frequent words) Is there any visible difference between the frequent words in “positive” vs “negative” tweets?
+
+library(wordcloud)
+pos = subset(covid_nlp, Sentiment == "Positive")$OriginalTweet
+neg = subset(covid_nlp, Sentiment == "Negative")$OriginalTweet
+
+```
+
+Positive:
+
+```{r message=FALSE, warning=FALSE}
+wordcloud(pos, max.words = 100, scale = c(3, 0.5), random.order = FALSE)
+```
+
+Negative:
+
+```{r}
+wordcloud(neg, max.words = 100, scale = c(3, 0.5), random.order = FALSE)
+
+```
+
+There doesn't seem to be that huge of a difference between the words with a large frequency in the middle. Of course, coronavirus and covid19 and words related to shopping will be the same regardless of sentiment. The more interesting words appear in the smaller frequencies. For example I believe I see the words "scam", "panic" in negative but not in positive.
+
+```{r}
+#Create a document-term matrix from the cleaned corpus. Then split the data into train and test sets. Use 80% of samples (roughly 32925 rows ) for training and the rest for testing.
+
+covid_dtm = DocumentTermMatrix(covid_corpus_clean)
+```
+
+```{r}
+covid_dtm_train = covid_dtm[1:32925, ]
+covid_dtm_test = covid_dtm[32926:41157, ]
+```
+
+```{r}
+covid_train_labels = covid_nlp[1:32925, ]$Sentiment
+covid_test_labels = covid_nlp[32926:41157, ]$Sentiment
+```
+
+```{r}
+#Remove the words that appear less than 100 times in the training data. Convert frequencies in the document-term matrix to binary yes/no features.
+
+covid_freq_words = findFreqTerms(covid_dtm_train, 100)
+```
+
+```{r}
+covid_dtm_freq_train = covid_dtm_train[ , covid_freq_words]
+covid_dtm_freq_test = covid_dtm_test[ , covid_freq_words]
+```
+
+```{r}
+convert_counts <- function(x) {
+x = ifelse(x > 0, "Yes", "No")
+}
+```
+
+```{r}
+covid_train = apply(covid_dtm_freq_train, MARGIN = 2,
+convert_counts)
+
+covid_test = apply(covid_dtm_freq_test, MARGIN = 2,
+convert_counts)
+```
+
+```{r}
+#Train a Naïve Bayes classifier on the training data and evaluate its performance on the test data.
+
+library(e1071)
+```
+
+```{r}
+covid_classifier = naiveBayes(covid_train, covid_train_labels)
+```
+
+```{r}
+covid_test_pred = predict(covid_classifier, covid_test)
+```
+
+```{r}
+library(gmodels)
+CrossTable(covid_test_pred, covid_test_labels, prop.chisq = FALSE, prop.t = FALSE, dnn = c('predicted', 'actual'))
+```
+The crosstab shoes that the Bayes classifier correctly predicted Neutral 67.2% of the time, Positive 69.5%, and Negative 66.4%.It made 2640 mistakes, corresponding to an error rate of 32.0%. 

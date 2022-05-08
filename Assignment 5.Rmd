@@ -1,0 +1,452 @@
+---
+title: "Assignment 5"
+author: "Carissa Hicks"
+date: '2022-04-08'
+output: html_notebook
+---
+
+# Section 1. Data Cleaning
+
+```{r}
+housing = read.csv("housing.csv")
+housing = subset(housing, select= -Id) #removing the Id variable
+```
+```{r}
+summary(housing)
+```
+We removed the first column Id, which gives our dataset a total of 80 variables/columns. The majority of columns are categorical variables. I am counting the years and months variables as categorical data which 
+
+
+```{r}
+names(which(colSums(is.na(housing))>0))
+```
+Above gives a list of the columns that have missing values. 19 columns contain NAs.
+
+```{r}
+nalist = subset(housing, select =  names(which(colSums(is.na(housing))>0)))
+```
+```{r}
+colMeans(is.na(nalist))*100
+```
+Above gives the percentage of NAs in each of the columns that contain NAs. MiscFeature, PoolQC, Fence, FireplaceQu, and Alley have a high percentage of missing values. 
+
+```{r}
+summary(housing$SalePrice)
+boxplot(housing$SalePrice)
+```
+Doing summary on SalePrice the max value is 755,000. And doing a boxplot of this data also shows another point very close to this one. These seem like very high sale prices compared to the rest of the data. So we will remove them. Next I decided to sort SalePrice greatest to lowest to see the highest values that look like outliers. I will delete down to 745000 since the data seems to gradually and consistently decrease after that point.
+
+```{r}
+orderedprices = housing[order(-housing$SalePrice),] #order the data by salesPrices and in decreasing order
+```
+```{r}
+orderedprices$SalePrice[1:10] #showing the top 10 highest values
+```
+```{r}
+housing = subset(housing, SalePrice!=755000 & SalePrice!=745000 ) #removing the 2 high saleprices
+```
+```{r}
+summary(housing$SalePrice)
+boxplot(housing$SalePrice)
+```
+We removed the two obvious outliers from the SalePrice variable.
+
+
+
+Reading the data description we can see that some of the variables have NAs that actually mean "NotApplicable" instead of just missing randomly. We will replace these NAs with a different level to distinguish them from "real" NAs.
+
+```{r}
+housing$Alley[is.na(housing$Alley)] = "notApplicable"
+
+housing$BsmtQual[is.na(housing$BsmtQual)] = "notApplicable"
+housing$BsmtCond[is.na(housing$BsmtCond)] = "notApplicable"
+housing$BsmtExposure[is.na(housing$BsmtExposure)] = "notApplicable"
+housing$BsmtFinType1[is.na(housing$BsmtFinType1)] = "notApplicable"
+housing$BsmtFinType2[is.na(housing$BsmtFinType2)] = "notApplicable"
+
+housing$FireplaceQu[is.na(housing$FireplaceQu)] = "notApplicable"
+
+housing$GarageType[is.na(housing$GarageType)] = "notApplicable"
+housing$GarageYrBlt[is.na(housing$GarageYrBlt)] = 0                        #garageyear showed NA when there was no garage, so I will turn this into 0
+housing$GarageFinish[is.na(housing$GarageFinish)] = "notApplicable"
+housing$GarageQual[is.na(housing$GarageQual)] = "notApplicable"
+housing$GarageCond[is.na(housing$GarageCond)] = "notApplicable"
+
+housing$PoolQC[is.na(housing$PoolQC)] = "notApplicable"
+housing$Fence[is.na(housing$Fence)] = "notApplicable"
+housing$MiscFeature[is.na(housing$MiscFeature)] = "notApplicable"
+```
+
+```{r}
+summary(housing)
+```
+
+The remaining columns with NAs are as follows:
+```{r}
+names(which(colSums(is.na(housing))>0))
+```
+```{r}
+newnalist = subset(housing, select =  names(which(colSums(is.na(housing))>0)))
+```
+```{r}
+colMeans(is.na(newnalist))*100
+```
+
+```{r}
+(sum(is.na(housing))* 100) / prod(dim(housing))
+```
+Above we calculate the total percentage of missing values in the dataset: About .23%
+
+# Section 2. Data Exploration
+
+```{r}
+options(scipen=999)
+hist(housing$SalePrice)
+```
+Above is a histogram of SalePrice. It seems to be right skewed/positively skewed. Meaning that the mode is smaller than median. The most common house prices are between $100,000-$150,000 dollars.
+
+In order to use plot(SalePrice~., data=housing) we must convert all character columns either into num or factors. I will convert them into factors. I will also turn all the variables containing years into factors
+```{r}
+housing[sapply(housing, is.character)] = lapply(housing[sapply(housing, is.character)], as.factor)
+housing$YearBuilt = as.factor(housing$YearBuilt)
+housing$YearRemodAdd = as.factor(housing$YearRemodAdd)
+housing$MoSold = as.factor(housing$MoSold)
+housing$YrSold = as.factor(housing$YrSold)
+housing$GarageYrBlt = as.factor(housing$GarageYrBlt)
+```
+```{r}
+plot(SalePrice~.,data=housing)
+```
+From the plots created above it seems that SalePrice is associated with the majority of the variables. There is probably little association between SalePrice and MiscVal, PoolArea, and BsmtFinSF2. 
+
+
+The remaining columns that contain true NAs:
+```{r}
+names(which(colSums(is.na(housing))>0))
+```
+From these columns, MasVnrType and Electrical are categorical.
+```{r}
+library(caret)
+```
+```{r}
+#splitting the data into training and testing data
+set.seed(1)
+inTrain = createDataPartition(housing$SalePrice, p=0.8, list=FALSE)
+train = housing[inTrain,]
+test = housing[-inTrain,]
+```
+```{r}
+#find the mode of each column in the training data
+elec = table(as.vector(train$Electrical))
+names(elec)[elec==max(elec)]
+```
+```{r}
+mas = table(as.vector(train$MasVnrType))
+names(mas)[mas==max(mas)]
+```
+Calculated the mode of the two variables using only the training data. I will impute the NAs in both the training and testing data using these values. 
+```{r}
+train$Electrical[is.na(train$Electrical)] = "SBrkr"
+train$MasVnrType[is.na(train$MasVnrType)] = "None"
+
+test$Electrical[is.na(test$Electrical)] = "SBrkr"
+test$MasVnrType[is.na(test$MasVnrType)] = "None"
+```
+```{r}
+#checking again to see the remaining categorical variables that contain NAs
+names(which(colSums(is.na(train))>0))
+```
+We now see that electrical and MasVnrType are no longer in the list of NAs. 
+
+# Section 3. Creating Predictive Models
+### 3.1 Creating Regularized Linear Regression Models
+
+lasso Linear Regression Model:
+```{r}
+library(glmnet)
+set.seed(1)
+lasso <- train(
+na.action=na.pass, preProc="knnImpute",  
+SalePrice ~., data = train, method = "glmnet",
+trControl = trainControl("cv", number = 10),
+tuneGrid = expand.grid(alpha = 1, lambda = 10^seq(-3, 3, length =
+100)))
+```
+
+```{r}
+coef(lasso$finalModel, lasso$bestTune$lambda)
+```
+There are many predictors in this model that have been shrunk to zero. Lasso shrinking coefficients to zero means that those variables are irrelevant or not predictive in the lasso algorithm. 
+```{r}
+predictions = predict(lasso, test, na.action=na.pass)
+RMSE(predictions, test$SalePrice)
+```
+Ridge Linear Regression Model:
+
+```{r}
+set.seed(1)
+ridge <- train(
+na.action=na.pass, preProc="knnImpute",
+SalePrice ~., data = train, method = "glmnet",
+trControl = trainControl("cv", number = 10),
+tuneGrid = expand.grid(alpha = 0, lambda = 10^seq(-3, 3, length =
+100)))
+```
+```{r}
+predictions = predict(ridge, test, na.action=na.pass)
+RMSE(predictions, test$SalePrice)
+```
+Elastic Net Linear Regression Model:
+```{r}
+set.seed(1)
+enet <- train(
+na.action=na.pass, preProc="knnImpute",
+SalePrice ~., data = train, method = "glmnet",
+trControl = trainControl("cv", number = 10),
+tuneGrid = expand.grid(alpha =seq(0,1, length=10), lambda = 10^seq(-
+3, 3, length = 100)))
+```
+```{r}
+predictions = predict(enet, test, na.action=na.pass)
+RMSE(predictions, test$SalePrice)
+```
+
+### 3.2 Creating Tree-Ensemble and SVM Models
+
+Random Forest Model:
+```{r}
+set.seed(1)
+
+rf <- train(
+na.action=na.pass, preProc="knnImpute",
+SalePrice ~., data = train, method = "rf",
+trControl = trainControl("cv", number = 10),
+importance = T
+)
+```
+```{r}
+predictions = predict(rf, test, na.action=na.pass)
+RMSE(predictions, test$SalePrice)
+```
+```{r}
+varImp(rf)
+```
+Above we can see the top 20 most predictive variables in the random forest model.
+
+Gradient Boosted Tree Model:
+```{r}
+set.seed(1)
+gbm <- train(
+na.action=na.pass, preProc="nzv",
+SalePrice ~., data = train, method = "gbm",
+trControl = trainControl("cv", number = 10)
+)
+```
+```{r}
+predictions = predict(gbm, test, na.action=na.pass)
+RMSE(predictions, test$SalePrice)
+```
+Support Vector Machine Model:
+```{r}
+library(kernlab)
+set.seed(1)
+svm <- train(
+na.action=na.pass, preProc="knnImpute",
+SalePrice ~., data = train, method = "svmLinear",
+trControl = trainControl("cv", number = 10)
+)
+```
+```{r}
+predictions = predict(svm, test, na.action=na.pass)
+RMSE(predictions, test$SalePrice)
+```
+The hyper parameter C determines the boundary/margin/hyperplane that the model will allow, and the margin determines which data points will be misclassified. A large C results in a small margin, and a small C results in a large margin. The support vector machine tries to make the margin as wide as possible that won't misclassify too much data.
+
+Radial Basis Function as Kernel
+```{r}
+set.seed(1)
+rbf <- train(
+na.action=na.pass, preProc="knnImpute",
+SalePrice ~., data = train, method = "svmRadial",
+trControl = trainControl("cv", number = 10)
+)
+```
+```{r}
+predictions = predict(rbf, test, na.action=na.pass)
+RMSE(predictions, test$SalePrice)
+```
+Comparing the cross validation RMSE of the seven models we created:
+```{r}
+compare = resamples(list(L=lasso, R=ridge, E=enet, RF=rf, G=gbm, S=svm, SR=rbf))
+```
+```{r}
+summary(compare)
+```
+According to the resamples method, the random forest model has the best RMSE accuracy of the seven models we made. Therefore, random forest is the best for predicting SalesPrice so far.
+
+### Section 3.3 Creating a Neural Network Model
+
+```{r}
+#Create train/val datasets
+set.seed(1)
+library(caret)
+```
+```{r}
+inTrain_nn = createDataPartition(train$SalePrice, p=0.9, list=FALSE)
+
+train_nn = as.data.frame(train[inTrain_nn, ])
+val_nn = as.data.frame(train[-inTrain_nn, ])
+```
+
+```{r}
+original_scale_saleprice = as.data.frame(train[inTrain_nn])
+train_labels = log(train_nn$SalePrice)
+val_labels = log(val_nn$SalePrice)
+
+train_nn = train_nn[,-80]
+val_nn = val_nn[,-80]
+```
+
+```{r}
+test_nn = test
+test_labels = test_nn$SalePrice
+test_nn = test_nn[, -80]
+```
+
+
+preProcess
+```{r}
+library("RANN")
+preproc <- preProcess(train_nn, method="knnImpute")
+train.imputed <- predict(preproc, train_nn)
+test.imputed <- predict(preproc, test) 
+val.imputed <- predict(preproc, val_nn) 
+```
+
+Above we impute the missing values in the train/validation/test data based on the training data
+
+We will one-hot encode the factors of our data:
+```{r}
+library(mltools)
+library(data.table)
+```
+```{r}
+train_nn = one_hot(as.data.table(train.imputed),dropUnusedLevels = FALSE)    #one hot encode
+test_nn = one_hot(as.data.table(test.imputed),dropUnusedLevels = FALSE)
+val_nn = one_hot(as.data.table(val.imputed), dropUnusedLevels = FALSE)
+```
+
+```{r}
+train_nn = as.matrix(train_nn)
+val_nn = as.matrix(val_nn)
+```
+
+```{r}
+test_nn = as.matrix(test_nn)
+```
+
+```{r}
+length(train_labels)
+length(val_labels)
+dim(train_nn)
+dim(val_nn)
+```
+Building the ANN model:
+```{r}
+library(keras)
+library(dplyr)
+library(tfruns)
+```
+```{r}
+model = keras_model_sequential()%>%
+  layer_dense(units = 10, activation = "relu", input_shape = dim(train_nn)[2])%>% layer_dropout(0.5)%>%
+  layer_dense(units = 5, activation = "relu") %>% layer_dropout(0.2) %>%
+  layer_dense(units = 1)
+```
+```{r}
+model %>% compile(
+  loss = "mse",
+  optimizer = "sgd"
+)
+```
+```{r}
+history = model %>% fit(train_nn, log(train_labels),
+                        batch_size = 32, epochs = 64,
+                        validation_data = list(val_nn, log(val_labels)))
+```
+```{r}
+plot(history)
+```
+Hyperparameter tuning
+```{r}
+set.seed(1)
+runs <- tuning_run("housing.R",
+flags = list(
+nodes1 = c(64, 128, 392),
+nodes2 = c(64, 128, 392),
+learning_rate = c(0.01, 0.05, 0.001, 0.0001),
+batch_size=c(100,200,500,1000),
+epochs=c(30,50,100),
+dropout1 = c(0.2,0.3,0.4,0.5),
+dropout2 = c(0.2,0.3,0.4,0.5)
+), sample =0.02)
+```
+```{r}
+runs
+```
+```{r}
+view_run(runs$run_dir[3])
+```
+Looking at the run with the lowest metric_val_loss it looks like our model is not overfitting because the validation loss is lower than the training loss.
+
+```{r}
+trainval_labels = c(train_labels, val_labels)
+trainval = rbind(train_nn, val_nn)
+```
+```{r}
+test_nn = subset(test_nn, select= -SalePrice)
+```
+```{r}
+length(trainval_labels)
+dim(trainval)
+length(test_labels)
+dim(test_nn)
+```
+```{r}
+test_labels = log(test_labels)
+```
+
+```{r}
+best_model = keras_model_sequential()%>%
+  layer_dense(units = 392, activation = "relu", input_shape = dim(trainval)[2]) %>% layer_dropout(0.4) %>%
+  layer_dense(units = 128, activation = "relu") %>% layer_dropout(0.3) %>%
+  layer_dense(units = 1)
+```
+```{r}
+best_model %>% compile(
+  loss = "mse",
+  optimizer = optimizer_sgd(learning_rate=0.001)
+)
+```
+```{r}
+best_model %>% fit(trainval, trainval_labels,
+                        batch_size = 100, epochs = 100,
+                        validation_data = list(test_nn, test_labels))
+```
+```{r}
+best_model_pred <- best_model %>% predict(test_nn)
+```
+
+```{r}
+rmse = function(x, y){
+  return((mean((x - y)^2))^.5)
+}
+```
+```{r}
+RMSE(exp(best_model_pred), exp(test_labels))
+```
+```{r}
+summary(compare)
+```
+It looks like the neural network was only better than SVMRadial model according to the RMSE scores. The random forest model still has the best RMSE score of all the models.
+

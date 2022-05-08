@@ -1,0 +1,152 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+### Problem 2: Applying Naive Bayes classifier to sentiment classification of COVID tweets
+
+```{r}
+#read the data and store in df. Look at structure of data.
+
+covid_nlp = read.csv("Corona_NLP_train.csv", stringsAsFactors = FALSE)
+str(covid_nlp)
+```
+```{r}
+#randomize the order of the rows
+
+covid_nlp = covid_nlp[sample(nrow(covid_nlp), replace = FALSE),]
+```
+
+```{r}
+#convert sentiment into a factor with three levels: positive, neutral, negative. Take summary of sentiment.
+
+covid_nlp$Sentiment = factor(covid_nlp$Sentiment, levels = c("Neutral", "Positive", "Extremely Positive", "Negative", "Extremely Negative"), labels = c("Neutral", "Positive", "Positive", "Negative", "Negative"))
+summary(covid_nlp$Sentiment)
+```
+```{r}
+# Create a text corpus from OriginalTweet variable. Then clean the corpus, that is convert all tweets to lowercase, stem and remove stop words, punctuation, and additional white spaces. 
+
+library(tm)
+```
+
+```{r}
+covid_corpus = VCorpus(VectorSource(covid_nlp$OriginalTweet))
+as.character(covid_corpus[[1]])
+```
+```{r}
+covid_corpus_clean = tm_map(covid_corpus, content_transformer(tolower))
+covid_corpus_clean = tm_map(covid_corpus_clean, removeNumbers)
+covid_corpus_clean = tm_map(covid_corpus_clean, removeWords, stopwords())
+
+replacePunctuation = function(x){
+  gsub("[[:punct:]]+", " ", x)
+}
+```
+
+```{r}
+
+#replaceMorePunctuation = function(x){
+  #gsub("â", " ", x)
+#}
+```
+
+```{r}
+covid_corpus_clean = tm_map(covid_corpus_clean, content_transformer(replacePunctuation))
+#covid_corpus_clean = tm_map(covid_corpus_clean, content_transformer(replaceMorePunctuation))
+```
+
+```{r}
+as.character(covid_corpus_clean[[1]])
+```
+```{r}
+covid_corpus_clean = tm_map(covid_corpus_clean, content_transformer(replacePunctuation))
+as.character(covid_corpus_clean[[1]])
+```
+
+```{r}
+library(SnowballC)
+covid_corpus_clean = tm_map(covid_corpus_clean, stemDocument)
+covid_corpus_clean = tm_map(covid_corpus_clean, stripWhitespace)
+as.character(covid_corpus_clean[[1]])
+```
+```{r}
+#Create separate wordclouds for “positive” and “negative” tweets (set max.words=100 to only show  the 100 most frequent words) Is there any visible difference between the frequent words in “positive” vs “negative” tweets?
+
+library(wordcloud)
+pos = subset(covid_nlp, Sentiment == "Positive")$OriginalTweet
+neg = subset(covid_nlp, Sentiment == "Negative")$OriginalTweet
+
+```
+
+Positive:
+```{r message=FALSE, warning=FALSE}
+wordcloud(pos, max.words = 100, scale = c(3, 0.5), random.order = FALSE)
+```
+Negative:
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+wordcloud(neg, max.words = 100, scale = c(3, 0.5), random.order = FALSE)
+
+```
+
+There doesn't seem to be that huge of a difference between the words with a large frequency in the middle. Of course, coronavirus and covid19 and words related to shopping will be the same regardless of sentiment. The more interesting words appear in the smaller frequencies. For example I believe I see the words "scam", "panic" in negative but not in positive. 
+
+```{r}
+#Create a document-term matrix from the cleaned corpus. Then split the data into train and test sets. Use 80% of samples (roughly 32925 rows ) for training and the rest for testing.
+
+covid_dtm = DocumentTermMatrix(covid_corpus_clean)
+```
+
+```{r}
+covid_dtm_train = covid_dtm[1:32925, ]
+covid_dtm_test = covid_dtm[32926:41157, ]
+```
+
+```{r}
+covid_train_labels = covid_nlp[1:32925, ]$OriginalTweet
+covid_test_labels = covid_nlp[32926:41157, ]$OriginalTweet
+```
+
+```{r}
+#Remove the words that appear less than 100 times in the training data. Convert frequencies in the document-term matrix to binary yes/no features.
+
+covid_freq_words = findFreqTerms(covid_dtm_train, 100)
+```
+
+```{r}
+covid_dtm_freq_train = covid_dtm_train[ , covid_freq_words]
+covid_dtm_freq_test = covid_dtm_test[ , covid_freq_words]
+```
+
+```{r}
+convert_counts <- function(x) {
+x = ifelse(x > 0, "Yes", "No")
+}
+```
+
+```{r}
+covid_train = apply(covid_dtm_freq_train, MARGIN = 2,
+convert_counts)
+
+covid_test = apply(covid_dtm_freq_test, MARGIN = 2,
+convert_counts)
+```
+
+```{r message=FALSE, warning=FALSE}
+#Train a Naïve Bayes classifier on the training data and evaluate its performance on the test data.
+
+library(e1071)
+```
+
+```{r}
+covid_classifier = naiveBayes(covid_train, covid_train_labels)
+```
+
+```{r}
+covid_test_pred = predict(covid_classifier, covid_test)
+```
+
+```{r}
+library(gmodels)
+CrossTable(covid_test_pred, covid_test_labels, prop.chisq = FALSE, prop.t = FALSE, dnn = c('predicted', 'actual'))
+```

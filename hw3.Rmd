@@ -1,0 +1,313 @@
+---
+title: "Assignment 3"
+output: html_notebook
+---
+
+### Problem 1 - Predicting number of college applications
+
+```{r}
+#1. Download dataset and explore overall structure. 
+college = read.csv("college.csv")
+```
+
+```{r}
+summary(college)
+str(college)
+```
+* There are 777 observations in the data
+* There are 19 variables, 2 are categorical, 17 numerical
+* There does not seem to be any missing values.
+
+```{r}
+#2. remove the first column
+college = subset(college, select = -X)
+```
+
+```{r}
+#3. which variables are associated with apps?
+#o = c("Apps", "Accept", "Enroll", "Top10perc", "Top25perc", "F. Undergrad", "P. Undergrad", "Outstate", "Room.Board", "Books", "Personal", "PhD", "Terminal", "S.F.Ratio", "perc.alumni", "Expend", "Grad.Rate")
+pairs(~Apps+Accept+Enroll+Top10perc+Top25perc+F.Undergrad, data=college)
+pairs(~Apps+Outstate+Room.Board+Books+Personal+PhD, data=college)
+pairs(~Apps+Terminal+S.F.Ratio+perc.alumni+Expend+Grad.Rate, data=college)
+```
+Based soley on the scatterplot matrix, it seems like there is a positive correlation between Apps and Accept variables. There might be some correlation between Apps, PhD and Terminal. 
+
+```{r}
+cor(college[c("Apps", "Accept", "Enroll", "Top10perc", "Top25perc")])
+```
+There is a high correlation between Apps and Accept and Enroll. Less so between Apps and Top10Perc and Top25Perc. 
+```{r}
+cor(college[c("Apps", "F.Undergrad", "P.Undergrad", "Outstate", "Room.Board", "Books", "Personal")])
+```
+There is a high correlation between Apps and F.Undergrad. Less so for P.undergrad, and a very very small correlation between outstate, room.board, and books. I will remove these in the next step.
+```{r}
+cor(college[c("Apps", "PhD", "Terminal", "S.F.Ratio", "perc.alumni", "Expend", "Grad.Rate")])
+```
+There is a small correlation between Apps and phD and Terminal and expend, then an even smaller correlation between S.F.ratio, perc.alumni, and grad.rate, I will also remove these in the next step.
+
+```{r}
+boxplot(college$Apps~college$Private)
+t.test(college$Apps~college$Private,alternative="two.sided")
+```
+For comparing a categorical vs categorical I used a boxplot and t.test for Apps and Private. There seems to be a significance here due to the very low p-value. 
+
+
+```{r}
+#4. remove variables not associated with apps: outstate, room.board, books S.F.ratio, perc.alumni, and grad.rate
+college = subset(college, select = -c(Outstate, Room.Board, Books, S.F.Ratio, perc.alumni, Grad.Rate))
+summary(college)
+```
+
+```{r}
+#5. plot histogram of apps variable
+hist(college$Apps)
+```
+The histogram shows that applications is positively skewed on the values 0-500. Meaning that the majority of colleges received between that number of applications. 
+
+```{r}
+#6. split data into train and test, 621 rows for train
+college_train = college[1:621, ]
+college_test = college[622:777, ]
+```
+
+```{r}
+#7. set random seed
+set.seed(123)
+```
+
+```{r}
+#8. Use caret package to run 10 fold cross validation using linear regression method on the train data. Print the resulting model to see the cross validation RMSE. In addition, take a summary of the model and interpret the coefficients. Which coefficients are statistically different from zero? What does this mean?
+library(caret)
+```
+
+```{r}
+train.control = trainControl(method='cv', number=10)
+model = train(Apps~.,data=college_train,method='lm', trControl=train.control)
+print(model)
+summary(model)
+```
+PrivateYes, Accept, Enroll, Top10perc, Top25perc, F.Undergrad, and Expend all have low p-values, meaning they are statistically significant in determining Apps. 
+
+```{r}
+#9. Compute RMSE of the model on the test data. You can call “predict” function and pass to it the model (returned by caret train method) and the test data. Then compute RMSE of the predictions returned by the “predict” method.
+
+predictions = predict(model,college_test)
+#print(predictions)
+sqrt(mean((college_test$Apps-predictions)^2))
+```
+The RMSE of the predictions = 1126.051
+
+```{r}
+#10 set random seed again
+set.seed(123)
+```
+
+```{r}
+#11. 10fold cross validation using step wise linear regression method
+library(leaps)
+library(caret)
+train.control = trainControl(method='cv', number=10)
+step.model=train(Apps~.,data=college_train,method="leapBackward",trContol=train.control,tuneGrid=data.frame(nvmax=1:11))
+print(step.model)
+```
+The model with 9 predictors has the lowest cross validation RMSE at 1141.866.
+```{r}
+summary(step.model$finalModel)
+```
+The 9 variables which are selected in the model with the lowest RMSE are: PrivateYes, Accept, Enroll, Top10perc, Top25perc, F.Undergrad, Personal, PhD, and Expend
+
+```{r}
+#12. compute rmse of stepwise model on test data
+p.step.model = predict(step.model,college_test)
+sqrt(mean((college_test$Apps-p.step.model)^2))
+```
+The RMSE of the stepwise model on test data is 1129.992
+```{r}
+#13. use rpart function to create a regression tree model from the train data; get predictions on test data and compute rmse
+library(rpart)
+library(rpart.plot)
+m.rpart = rpart(Apps~.,data=college_train)
+rpart.plot(m.rpart,digits=3)
+```
+```{r}
+p.rpart = predict(m.rpart, college_test)
+sqrt(mean((college_test$Apps-p.rpart)^2))
+```
+
+```{r}
+#14. compare the rmse on the test data for linear regression, stepwise regression, and the regression tree
+```
+The model that produced the lowest RMSE was the first one that used 10-fold cross validation using linear regression. The next lowest was the stepwise regression and then highest was the regression tree.
+
+-----
+
+### Problem 2 - Predicting Customer Churn using Logistic Regression and Decision Trees
+
+```{r}
+#1. load the dataset,examine structure, and remove the first three variables. convert strings to factors.
+churn = read.csv("Churn_Modelling.csv", stringsAsFactors = TRUE)
+str(churn)
+churn = subset(churn, select = -c(RowNumber, CustomerId, Surname))
+```
+
+```{r}
+#2. find which variables are associated with exited, and remove those that are not
+library(gmodels)
+```
+```{r}
+geot = table(churn$Exited, churn$Geography)
+gent = table(churn$Exited, churn$Gender)
+hcct = table(churn$Exited, churn$HasCrCard)
+iamt = table(churn$Exited, churn$IsActiveMember)
+
+mosaicplot(geot, shade=TRUE)
+mosaicplot(gent, shade=TRUE)
+mosaicplot(hcct, shade = TRUE)
+mosaicplot(iamt, shade = TRUE)
+
+chisq.test(geot)
+chisq.test(gent)
+chisq.test(hcct)
+chisq.test(iamt)
+```
+We used the chisquare test and mosaic plot to compare exited with the other categorical variables: hascrcard, isactivemember, geography, and gender. From these the only variable that had a high p-value was hascrcard, we can also see that the mosaic plot it returned is completely whtie, therefore we can accurately say that having a credit card is not associated with whether the customer leaves the bank or not. We will remove this variable in the next step.
+
+```{r}
+boxplot(churn$CreditScore~churn$Exited)
+boxplot(churn$Age~churn$Exited)
+boxplot(churn$Tenure~churn$Exited)
+boxplot(churn$Balance~churn$Exited)
+boxplot(churn$NumOfProducts~churn$Exited)
+boxplot(churn$EstimatedSalary~churn$Exited)
+```
+To compare exited with the various numeric variables in our data, we will use boxplots and t.tests. From the above boxplots, There is not a very noticeable difference between the means of exited vs creditscore, tenure, and estimated salary. 
+
+```{r}
+t.test(churn$CreditScore~churn$Exited,alternative="two.sided")
+t.test(churn$Age~churn$Exited,alternative="two.sided")
+t.test(churn$Tenure~churn$Exited,alternative="two.sided")
+t.test(churn$Balance~churn$Exited,alternative="two.sided")
+t.test(churn$NumOfProducts~churn$Exited,alternative="two.sided")
+t.test(churn$IsActiveMember~churn$Exited,alternative="two.sided")
+t.test(churn$EstimatedSalary~churn$Exited,alternative="two.sided")
+```
+From these t-tests we can see that Credit score, age, balance, num of products, and active member are all related to exited. Tenure and estimated salary have higher p-values than our alpha 0.05, therefore, they are not related and we will remove them in the next step.
+
+```{r}
+#remove hascreditcard, tenure and estimated salary
+churn = subset(churn, select = -c(Tenure, EstimatedSalary, HasCrCard))
+```
+
+```{r}
+#3. setseed and split data into train and test 80 train 20 test
+set.seed(123)
+
+#training
+train_sample = sample(10000, 8000)
+churn_train = churn[train_sample, ]
+churn_test = churn[-train_sample, ]
+```
+
+```{r}
+#Train a logistic regression model on the train data using the glm package and use it to 
+#predict “Exited” for the test data.
+#Note: As explained in the lectures, “predict” method will return predicted probabilities. To convert them to labels, you need to use some threshold ( typically set as 50%) and if the predicted probability is greater than 50% you predict label “1” for Exited; otherwise predict label “0” ( please review the example in lecture 7.2)
+
+logistic_model = glm(Exited~CreditScore+Geography+Gender+Age+Balance+NumOfProducts+IsActiveMember, data=churn_train,family="binomial")
+summary(logistic_model)
+```
+```{r}
+pred=predict(logistic_model, churn_test, type='response')
+head(pred)
+pred.label=factor(ifelse(pred>.5,"Exit", "Stay"))
+length(pred.label)
+```
+```{r}
+#5. Get the cross table between the predicted labels and true labels in the test data and compute total_error, false positive rate, and false negative rate.
+actual.label=factor(ifelse(churn_test$Exited==1, "Exit", "Stay"))
+t=table(pred.label,actual.label)
+t
+```
+
+```{r}
+error=(t[1,2]+t[2,1])/sum(t)
+error
+```
+* total_error = 0.192
+* false positive rate = .44
+* false negative rate = .17
+
+
+```{r}
+#6. downsampling
+table(churn$Exited)
+```
+```{r}
+#divide training data into two sets of people who did and didnt exit
+exited = churn_train$Exited==1
+didntexit = churn_train[!exited, ]
+didexit = churn_train[exited, ]
+```
+
+```{r}
+#sample non exiting so that you have same number of exiting and non exiting
+library(dplyr)
+s.didntexit = sample_n(didntexit, 1634)
+```
+
+```{r}
+#combine exiting and nonexiting into one dataframe
+churn_train_new = rbind(s.didntexit, didexit)
+```
+
+```{r}
+#retrain the model and get errors, which model does better
+logistic_model2 = glm(Exited~CreditScore+Geography+Gender+Age+Balance+NumOfProducts+IsActiveMember, data=churn_train_new,family="binomial")
+#summary(logistic_model2)
+pred=predict(logistic_model2, churn_test, type='response')
+#head(pred)
+pred.label=factor(ifelse(pred>.5,"Exit", "Stay"))
+actual.label=factor(ifelse(churn_test$Exited==1, "Exit", "Stay"))
+t=table(pred.label,actual.label)
+t
+error=(t[1,2]+t[2,1])/sum(t)
+error
+```
+* total error: .2955
+* false positives: 0.62
+* false negatives: 0.11
+
+The total error for this model is .2955, The false positive rate is .62, and the false negative rate is .11. In this case, we want to reduce the amount of false negatives meaning that we incorrectly predict that the customer will stay with the bank. The second model is better for this because the false negative rate is lower. However, the total error of this model is greater than the previous.
+
+```{r}
+#Repeat steps 4,5,6 above but this time, use a C5.0 decision tree model to predict “Exited”.
+library(C50)
+churn_train$Exited = factor(churn_train$Exited)
+churn_c50 = C5.0(churn_train[-8], churn_train$Exited, trials=30)
+churn_c50
+
+```
+```{r}
+library(gmodels)
+churn_c50_pred = predict(churn_c50, churn_test)
+CrossTable(churn_test$Exited, churn_c50_pred)
+```
+* total error: .131
+* false positives: 0.04
+* false negatives: 0.49
+
+```{r}
+#run the decision tree on downsampled data
+churn_train_new$Exited = factor(churn_train_new$Exited)
+churn_c50_2 = C5.0(churn_train_new[-8], churn_train_new$Exited, trials=30)
+churn_c50_2
+```
+```{r}
+churn_c50_pred_2 = predict(churn_c50_2, churn_test)
+CrossTable(churn_test$Exited, churn_c50_pred_2)
+```
+* total error: .214
+* false positives: 0.20
+* false negatives: 0.25
+
+From the c5.0 models the downsampled model is better because the false negative rate is lower than the non-downsampled model even though the total error rate is higher. Comparing the downsampled logistic regression model to the downsampled tree model, The logistic regression model wins because the false negative rate is lower. However, it does have a higher total error than any of the models. This is because a bank would rather be wrong about someone exiting the bank than be wrong about someone staying at the bank. The latter has bigger consequences and profit loss. 

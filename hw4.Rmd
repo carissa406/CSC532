@@ -1,0 +1,362 @@
+---
+title: "Assignment 4"
+output: html_notebook
+---
+
+### Problem 1 - Using ANN for Covid Sentiment Classification
+
+```{r}
+covid = read.csv("Corona_NLP_train.csv")
+str(covid)
+```
+
+```{r}
+#1. use qdap package to remove stop words and do stemming.
+library(qdap)
+covid$OriginalTweet=rm_stopwords(covid$OriginalTweet,stopwords=tm::stopwords("english"),separate=FALSE,strip=TRUE)
+covid$OriginalTweet=stemmer(covid$OriginalTweet,warn=FALSE)
+```
+
+```{r}
+#2. randomize the order of rows, set same seed as assignment 2
+set.seed(1)
+covid = covid[sample(nrow(covid), replace = FALSE),]
+```
+
+```{r}
+#3. convert sentiment into factor variable with three levels, then convert to numeric vector
+covid$Sentiment = factor(covid$Sentiment, levels = c("Neutral", "Positive", "Extremely Positive", "Negative", "Extremely Negative"), labels = c("Neutral", "Positive", "Positive", "Negative", "Negative"))
+```
+```{r}
+covid$Sentiment=as.numeric(covid[,"Sentiment"])-1
+```
+
+```{r}
+#4. split data three ways into train/validation/test sets
+covid_train = covid[1:26340,]
+covid_val = covid[26341:32925,]
+covid_test = covid[32926:41157,]
+```
+
+```{r}
+train_labels = covid[1:26340,]$Sentiment
+val_labels = covid[26341:32925,]$Sentiment
+test_labels = covid[32926:41157,]$Sentiment
+```
+
+```{r}
+#5. create dtm for datasets above
+library(keras)
+text_vectorizer = layer_text_vectorization(output_mode ="tf_idf",ngrams=2,max_tokens = 5000)
+
+text_vectorizer %>% adapt(covid_train$OriginalTweet)
+
+covid_train_dtm = text_vectorizer(covid_train$OriginalTweet)
+covid_val_dtm = text_vectorizer(covid_val$OriginalTweet)
+covid_test_dtm = text_vectorizer(covid_test$OriginalTweet)
+```
+
+```{r}
+#create ANN model
+library(dplyr)
+model = keras_model_sequential()
+model %>%
+  layer_dense(units=128, activation = "relu")%>%
+  layer_dense(units=128, activation = "relu")%>%
+  layer_dense(units=3, activation="softmax")
+```
+```{r}
+model %>% compile(
+  optimizer = 'adam',
+  loss = 'sparse_categorical_crossentropy',
+  metrics = c('accuracy')
+)
+```
+```{r}
+set.seed(1)
+
+model %>% fit(
+  covid_train_dtm, 
+  train_labels, 
+  epochs = 10,
+  batch_size = 50, 
+  validation_data = list(covid_val_dtm, val_labels))
+```
+```{r}
+predicted_labels=as.numeric(model %>% predict(covid_test_dtm) %>%k_argmax())
+```
+```{r}
+library(gmodels)
+CrossTable(predicted_labels, test_labels)
+```
+
+* total error: .26
+* correctly predicted 0: .615
+* correctly predicted 1: .797
+* correctly predicted 2: .740
+
+It looks like our model has a total error of 26% and was able to predict Positive tweets the best being 79.7% correct and neutral tweets the least at 61.5%. Our model isn't doing too well with that high total error.
+
+```{r}
+#tune hyperparameters
+library(tfruns)
+```
+```{r}
+runs <- tuning_run("covid_flags.R",
+flags = list(
+nodes = c(64, 128, 392),
+learning_rate = c(0.01, 0.05, 0.001, 0.0001),
+batch_size=c(100,200,500,1000),
+epochs=c(30,50,100),
+activation=c("relu","sigmoid","tanh")
+), sample = 0.02
+)
+```
+```{r}
+runs
+```
+
+```{r message=FALSE, warning=FALSE}
+#viewing the run with the highest validation accuracy
+view_run((runs$run_dir[5]))
+```
+
+- see attached screenshot of learning curves -
+The model is still overfitting because the training loss is lower/better than the validation loss
+The validation loss stops decreasing at around 5 epochs and then looks like it starts increasing!
+
+```{r}
+#convert covid train and covid val dtms into matricies, combine using rbind
+covid_train_dtm = data.matrix(covid_train_dtm)
+covid_val_dtm = data.matrix(covid_val_dtm)
+```
+```{r}
+trainval = rbind(covid_train_dtm, covid_val_dtm)
+```
+
+```{r}
+#combine train and val labels
+trainval_labels = rbind(train_labels, val_labels)
+```
+
+```{r}
+#retrain model on new training data eval on test data
+set.seed(1)
+
+model = keras_model_sequential()
+model %>%
+  layer_dense(units=392, activation = "relu")%>%
+  layer_dense(units=392, activation = "relu")%>%
+  layer_dense(units=10, activation="softmax")
+
+model %>% compile(
+  optimizer = 'adam',
+  loss = 'sparse_categorical_crossentropy',
+  metrics = c('accuracy'))
+
+model %>% compile(
+  optimizer = optimizer_adam(lr=0.0001),
+  loss = 'sparse_categorical_crossentropy',
+  metrics = c('accuracy'))
+
+model %>% fit(
+  covid_train_dtm, 
+  train_labels, 
+  epochs = 50,
+  batch_size = 500,
+  validation_data = list(covid_val_dtm, val_labels))
+```
+```{r}
+new_predicted_labels=as.numeric(model %>% predict(covid_test_dtm) %>%k_argmax())
+```
+```{r}
+CrossTable(new_predicted_labels, test_labels)
+```
+Current Model:
+* Error rate: 24.9%
+* Neutral: 67.5%
+* Positive: 77.0%
+* Negative: 75.9%
+
+Naive Bayes Model from Assignment 2:
+* Error rate: 32%
+* Neutral: 67.2%
+* Positive: 69.5%
+* Negative: 66.4%
+
+Based on these numbers, our current ANN model does better than our Naive Bayes model from assignment 2. The total error rate is lower. It does similarly at predicting neutral tweets, but does much better at predicting positive and negative tweets.
+
+### Problem 2 - Predicting Baseball Players' Salaries
+
+```{r}
+hitters = read.csv("hitters-1.csv", stringsAsFactors = TRUE)
+```
+```{r}
+str(hitters)
+```
+* Number of observations: 322
+* Number of numeric: 17/20
+* Number of categorical: 3/20
+
+```{r}
+summary(hitters)
+```
+* Any missing values: 59 missing values in Salary
+
+```{r}
+hist(hitters$Salary)
+```
+From the histogram we can determine that the majority of hitters make less than 1 million dollars. 
+
+```{r}
+#remove observations for which salary value is missing
+hitters = na.omit(hitters)
+summary(hitters)
+```
+```{r}
+pairs(~Salary+CHmRun+CRuns+CRBI+AtBat+Hits, data = hitters)
+pairs(~Salary+RBI+Walks+Years+CAtBat+CHits, data=hitters)
+pairs(~Salary+CWalks+PutOuts+Assists+Errors, data = hitters)
+pairs(~Salary+HmRun+Runs, data = hitters)
+```
+
+```{r}
+numeric_attributes = c("Salary","AtBat", "Hits", "HmRun", "Runs", "RBI", "Walks", "Years", "CAtBat", "CHits", "CHmRun", "CRuns", "CRBI", "CWalks", "PutOuts", "Assists", "Errors")
+```
+```{r}
+cor(hitters[numeric_attributes])
+```
+From our findings of numerical it seems that the only attributes not associated with Salary are probably Assists and Errors.
+
+```{r}
+boxplot(hitters$Salary~hitters$League)
+boxplot(hitters$Salary~hitters$Division)
+boxplot(hitters$Salary~hitters$NewLeague)
+```
+```{r}
+t.test(hitters$Salary~hitters$League,alternative="two.sided")
+t.test(hitters$Salary~hitters$Division, alternative="two.sided")
+t.test(hitters$Salary~hitters$NewLeague, alternative="two.sided")
+```
+From these findings we can safely say that Division is the only attribute associated with Salary. 
+
+```{r}
+library(caret)
+```
+
+```{r}
+#create data partition 10/90
+set.seed(1)
+inTrain = createDataPartition(hitters$Salary, p=0.9, list=FALSE)
+hitters_train = hitters[inTrain,]
+hitters_test = hitters[-inTrain,]
+```
+```{r}
+test_labels = hitters[-inTrain,]$Salary                              #test
+```
+
+
+```{r}
+#encode categorical variables as numerical
+hitters$League=ifelse(hitters$League=="A",0,1)
+hitters$Division=ifelse(hitters$Division=="E",0,1)
+hitters$NewLeague=ifelse(hitters$NewLeague=="A",0,1)
+```
+
+```{r}
+#change salary to log(salary)
+hitters$Salary = log(hitters$Salary)
+```
+
+```{r}
+#remove salary from numeric cols
+numeric_cols = c("AtBat", "Hits", "HmRun", "Runs", "RBI", "Walks", "Years", "CAtBat", "CHits", "CHmRun", "CRuns", "CRBI", "CWalks", "PutOuts", "Assists", "Errors")
+```
+
+```{r}
+#further split the training data into train and val
+set.seed(1)
+more_train = createDataPartition(hitters_train$Salary, p=0.9, list=FALSE)
+```
+```{r}
+hitters_train = hitters[more_train,]
+train_labels = hitters[more_train,]$Salary   #training labels
+hitters_val = hitters[-more_train,]
+val_labels = hitters[-more_train,]$Salary    #validation labels
+```
+
+```{r}
+#scale the numeric attributes in the training data
+col_means_train = attr(scale(hitters_train[,numeric_cols]), "scaled:center")
+col_stddevs_train = attr(scale(hitters_train[,numeric_cols]), "scaled:scale")
+```
+```{r}
+hitters_train[numeric_cols]=scale(hitters_train[numeric_cols])
+hitters_test[numeric_cols]=scale(hitters_test[numeric_cols],center=col_means_train,scale=col_stddevs_train)
+```
+
+```{r}
+library(keras)
+model <- keras_model_sequential() %>%
+layer_dense(units = 5, activation = "relu",
+            input_shape = dim(hitters_train)[2]) %>%
+layer_dense(units = 5, activation = "relu") %>%
+layer_dense(units = 1)
+```
+```{r}
+model %>% compile(
+loss = "mse",
+optimizer = "sgd",
+metrics = "acc")
+```
+```{r}
+set.seed(1)
+history <- model %>% fit(as.matrix(hitters_train),
+train_labels,
+batch_size=50,
+epochs = 200,
+validation_data=list(as.matrix(hitters_val),val_labels), verbose=2)
+```
+```{r}
+#tuning hyper parameters
+runs <- tuning_run("hitters_flags.R",
+flags = list(
+nodes = c(64, 128, 392),
+learning_rate = c(0.01, 0.05, 0.001, 0.0001),
+batch_size=c(100,200,500,1000),
+epochs=c(30,50,100),
+activation=c("relu")
+),
+sample = 0.02
+)
+```
+```{r}
+runs
+```
+
+```{r}
+view_run(runs$run_dir[3])
+```
+```{r}
+library(keras)
+model <- keras_model_sequential() %>%
+layer_dense(units = 64, activation = "relu",
+            input_shape = dim(hitters_train)[2]) %>%
+layer_dense(units = 64, activation = "relu") %>%
+layer_dense(units = 1)
+```
+```{r}
+model %>% compile(
+loss = "mse",
+optimizer = "sgd",
+metrics = "rmse")
+```
+```{r}
+set.seed(1)
+model %>% fit(as.matrix(hitters_train),
+train_labels,
+batch_size=100,
+epochs = 30,
+validation_data=list(as.matrix(hitters_val),val_labels), verbose=2)
+```
+

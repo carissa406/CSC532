@@ -1,0 +1,12 @@
+---
+title: "Homework 1"
+output: html_notebook
+---
+
+chick7 CSC532
+
+### Problem 1: Vegas Hotels
+```{R}
+vegashotels.data = read.csv2("vegashotels-1.csv", stringsAsFactors = TRUE)
+str(vegashotels.data)
+```
